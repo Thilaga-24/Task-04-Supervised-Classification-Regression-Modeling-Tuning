@@ -1,0 +1,984 @@
+# ============================================================
+# SUPERVISED CLASSIFICATION MODELING & HYPERPARAMETER TUNING
+# ============================================================
+
+# If required, uncomment and run:
+# !pip install pandas numpy scikit-learn matplotlib seaborn xgboost joblib
+
+
+# ============================================================
+# 1. IMPORT LIBRARIES
+# ============================================================
+
+import warnings
+warnings.filterwarnings("ignore")
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import joblib
+from IPython.display import display
+
+from sklearn.model_selection import (
+    train_test_split,
+    StratifiedKFold,
+    GridSearchCV
+)
+
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+
+from sklearn.preprocessing import (
+    StandardScaler,
+    OneHotEncoder
+)
+
+from sklearn.impute import SimpleImputer
+
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC
+
+from xgboost import XGBClassifier
+
+from sklearn.metrics import (
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    roc_auc_score,
+    roc_curve,
+    confusion_matrix,
+    classification_report
+)
+
+
+# ============================================================
+# 2. LOAD DATASET
+# ============================================================
+
+url = "https://raw.githubusercontent.com/datasciencedojo/datasets/master/titanic.csv"
+
+df = pd.read_csv(url)
+
+print("=" * 70)
+print("DATASET INFORMATION")
+print("=" * 70)
+
+print("Dataset Shape:", df.shape)
+
+print("\nFirst 5 Rows:")
+display(df.head())
+
+
+# ============================================================
+# 3. SELECT RELEVANT FEATURES
+# ============================================================
+
+df = df[
+    [
+        "Survived",
+        "Pclass",
+        "Sex",
+        "Age",
+        "SibSp",
+        "Parch",
+        "Fare",
+        "Embarked"
+    ]
+]
+
+print("\nSelected Columns:")
+print(df.columns.tolist())
+
+
+# ============================================================
+# 4. BASIC DATA CHECK
+# ============================================================
+
+print("\n" + "=" * 70)
+print("MISSING VALUES")
+print("=" * 70)
+
+print(df.isnull().sum())
+
+print("\nData Types:")
+print(df.dtypes)
+
+print("\nTarget Distribution:")
+print(df["Survived"].value_counts())
+
+
+# ============================================================
+# 5. SEPARATE FEATURES AND TARGET
+# ============================================================
+
+X = df.drop("Survived", axis=1)
+
+y = df["Survived"]
+
+print("\nFeatures:")
+print(X.columns.tolist())
+
+print("\nTarget:", y.name)
+
+
+# ============================================================
+# 6. TRAIN / TEST SPLIT
+# ============================================================
+# IMPORTANT:
+# Split BEFORE fitting any preprocessing transformation.
+# Stratify maintains the class distribution.
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X,
+    y,
+    test_size=0.20,
+    random_state=42,
+    stratify=y
+)
+
+print("\n" + "=" * 70)
+print("TRAIN / TEST SPLIT")
+print("=" * 70)
+
+print("Training samples:", X_train.shape[0])
+print("Testing samples :", X_test.shape[0])
+
+
+# ============================================================
+# 7. DEFINE NUMERICAL AND CATEGORICAL FEATURES
+# ============================================================
+
+numerical_features = [
+    "Age",
+    "SibSp",
+    "Parch",
+    "Fare"
+]
+
+categorical_features = [
+    "Pclass",
+    "Sex",
+    "Embarked"
+]
+
+
+# ============================================================
+# 8. NUMERICAL PREPROCESSING PIPELINE
+# ============================================================
+# Missing numerical values -> Median
+# Numerical scaling -> StandardScaler
+
+numeric_pipeline = Pipeline(
+    steps=[
+        (
+            "imputer",
+            SimpleImputer(strategy="median")
+        ),
+        (
+            "scaler",
+            StandardScaler()
+        )
+    ]
+)
+
+
+# ============================================================
+# 9. CATEGORICAL PREPROCESSING PIPELINE
+# ============================================================
+# Missing categorical values -> Most Frequent
+# Categorical values -> One-Hot Encoding
+
+categorical_pipeline = Pipeline(
+    steps=[
+        (
+            "imputer",
+            SimpleImputer(strategy="most_frequent")
+        ),
+        (
+            "onehot",
+            OneHotEncoder(
+                handle_unknown="ignore",
+                drop="first"
+            )
+        )
+    ]
+)
+
+
+# ============================================================
+# 10. COLUMN TRANSFORMER
+# ============================================================
+
+preprocessor = ColumnTransformer(
+    transformers=[
+        (
+            "num",
+            numeric_pipeline,
+            numerical_features
+        ),
+        (
+            "cat",
+            categorical_pipeline,
+            categorical_features
+        )
+    ]
+)
+
+
+# ============================================================
+# 11. DEFINE MODELS
+# ============================================================
+
+logistic_model = LogisticRegression(
+    max_iter=1000,
+    random_state=42
+)
+
+random_forest_model = RandomForestClassifier(
+    random_state=42,
+    n_jobs=-1
+)
+
+xgb_model = XGBClassifier(
+    eval_metric="logloss",
+    random_state=42,
+    n_jobs=-1
+)
+
+svm_model = SVC(
+    probability=True,
+    random_state=42
+)
+
+
+# ============================================================
+# 12. CREATE COMPLETE MODEL PIPELINES
+# ============================================================
+
+logistic_pipeline = Pipeline(
+    steps=[
+        ("preprocessor", preprocessor),
+        ("model", logistic_model)
+    ]
+)
+
+rf_pipeline = Pipeline(
+    steps=[
+        ("preprocessor", preprocessor),
+        ("model", random_forest_model)
+    ]
+)
+
+xgb_pipeline = Pipeline(
+    steps=[
+        ("preprocessor", preprocessor),
+        ("model", xgb_model)
+    ]
+)
+
+svm_pipeline = Pipeline(
+    steps=[
+        ("preprocessor", preprocessor),
+        ("model", svm_model)
+    ]
+)
+
+
+# ============================================================
+# 13. STRATIFIED K-FOLD CROSS VALIDATION
+# ============================================================
+
+cv = StratifiedKFold(
+    n_splits=5,
+    shuffle=True,
+    random_state=42
+)
+
+print("\n" + "=" * 70)
+print("STRATIFIED 5-FOLD CROSS VALIDATION")
+print("=" * 70)
+
+
+# ============================================================
+# 14. HYPERPARAMETER GRIDS
+# ============================================================
+
+# Logistic Regression
+logistic_params = {
+    "model__C": [0.01, 0.1, 1, 10, 100],
+    "model__solver": ["liblinear", "lbfgs"]
+}
+
+
+# Random Forest
+rf_params = {
+    "model__n_estimators": [100, 200],
+    "model__max_depth": [None, 5, 10],
+    "model__min_samples_split": [2, 5],
+    "model__min_samples_leaf": [1, 2]
+}
+
+
+# XGBoost
+xgb_params = {
+    "model__n_estimators": [100, 200],
+    "model__max_depth": [3, 5],
+    "model__learning_rate": [0.01, 0.1],
+    "model__subsample": [0.8, 1.0]
+}
+
+
+# SVM
+svm_params = {
+    "model__C": [0.1, 1, 10],
+    "model__gamma": ["scale", "auto"],
+    "model__kernel": ["rbf", "linear"]
+}
+
+
+# ============================================================
+# 15. FUNCTION FOR GRID SEARCH
+# ============================================================
+
+def tune_model(name, pipeline, param_grid):
+
+    print("\n" + "=" * 70)
+    print(f"TUNING: {name}")
+    print("=" * 70)
+
+    grid_search = GridSearchCV(
+        estimator=pipeline,
+        param_grid=param_grid,
+        cv=cv,
+        scoring="roc_auc",
+        n_jobs=-1,
+        verbose=1,
+        return_train_score=True
+    )
+
+    grid_search.fit(
+        X_train,
+        y_train
+    )
+
+    print("\nBest Parameters:")
+    print(grid_search.best_params_)
+
+    print(
+        "\nBest Cross-Validation ROC-AUC:",
+        round(grid_search.best_score_, 4)
+    )
+
+    return grid_search
+
+
+# ============================================================
+# 16. TUNE LOGISTIC REGRESSION
+# ============================================================
+
+logistic_search = tune_model(
+    "Logistic Regression",
+    logistic_pipeline,
+    logistic_params
+)
+
+best_logistic = logistic_search.best_estimator_
+
+
+# ============================================================
+# 17. TUNE RANDOM FOREST
+# ============================================================
+
+rf_search = tune_model(
+    "Random Forest",
+    rf_pipeline,
+    rf_params
+)
+
+best_rf = rf_search.best_estimator_
+
+
+# ============================================================
+# 18. TUNE XGBOOST
+# ============================================================
+
+xgb_search = tune_model(
+    "XGBoost",
+    xgb_pipeline,
+    xgb_params
+)
+
+best_xgb = xgb_search.best_estimator_
+
+
+# ============================================================
+# 19. TUNE SVM
+# ============================================================
+
+svm_search = tune_model(
+    "Support Vector Machine",
+    svm_pipeline,
+    svm_params
+)
+
+best_svm = svm_search.best_estimator_
+
+
+# ============================================================
+# 20. STORE ALL BEST MODELS
+# ============================================================
+
+models = {
+    "Logistic Regression": best_logistic,
+    "Random Forest": best_rf,
+    "XGBoost": best_xgb,
+    "SVM": best_svm
+}
+
+
+# ============================================================
+# 21. CROSS-VALIDATION MODEL COMPARISON
+# ============================================================
+
+cv_comparison = pd.DataFrame({
+    "Model": [
+        "Logistic Regression",
+        "Random Forest",
+        "XGBoost",
+        "SVM"
+    ],
+    "Validation ROC-AUC": [
+        logistic_search.best_score_,
+        rf_search.best_score_,
+        xgb_search.best_score_,
+        svm_search.best_score_
+    ]
+})
+
+cv_comparison = cv_comparison.sort_values(
+    by="Validation ROC-AUC",
+    ascending=False
+).reset_index(drop=True)
+
+print("\n" + "=" * 70)
+print("CROSS-VALIDATION MODEL COMPARISON")
+print("=" * 70)
+
+display(cv_comparison.round(4))
+
+
+# ============================================================
+# 22. EVALUATION FUNCTION
+# ============================================================
+
+def evaluate_model(name, model):
+
+    # Predictions
+    y_pred = model.predict(X_test)
+
+    # Probability predictions
+    y_prob = model.predict_proba(X_test)[:, 1]
+
+    # Metrics
+    accuracy = accuracy_score(
+        y_test,
+        y_pred
+    )
+
+    precision = precision_score(
+        y_test,
+        y_pred,
+        zero_division=0
+    )
+
+    recall = recall_score(
+        y_test,
+        y_pred,
+        zero_division=0
+    )
+
+    f1 = f1_score(
+        y_test,
+        y_pred,
+        zero_division=0
+    )
+
+    roc_auc = roc_auc_score(
+        y_test,
+        y_prob
+    )
+
+    return {
+        "Model": name,
+        "Accuracy": accuracy,
+        "Precision": precision,
+        "Recall": recall,
+        "F1 Score": f1,
+        "ROC-AUC": roc_auc
+    }
+
+
+# ============================================================
+# 23. EVALUATE ALL MODELS
+# ============================================================
+
+results = []
+
+for name, model in models.items():
+
+    result = evaluate_model(
+        name,
+        model
+    )
+
+    results.append(result)
+
+
+# ============================================================
+# 24. FINAL MODEL COMPARISON TABLE
+# ============================================================
+
+comparison_df = pd.DataFrame(results)
+
+comparison_df = comparison_df.sort_values(
+    by="ROC-AUC",
+    ascending=False
+).reset_index(drop=True)
+
+print("\n" + "=" * 70)
+print("FINAL MODEL COMPARISON")
+print("=" * 70)
+
+display(
+    comparison_df.round(4)
+)
+
+
+# ============================================================
+# 25. CLASSIFICATION REPORT FOR EACH MODEL
+# ============================================================
+
+for name, model in models.items():
+
+    print("\n" + "=" * 70)
+    print(f"CLASSIFICATION REPORT: {name}")
+    print("=" * 70)
+
+    predictions = model.predict(
+        X_test
+    )
+
+    print(
+        classification_report(
+            y_test,
+            predictions,
+            zero_division=0
+        )
+    )
+
+
+# ============================================================
+# 26. CONFUSION MATRICES
+# ============================================================
+
+for name, model in models.items():
+
+    predictions = model.predict(
+        X_test
+    )
+
+    cm = confusion_matrix(
+        y_test,
+        predictions
+    )
+
+    plt.figure(figsize=(6, 5))
+
+    sns.heatmap(
+        cm,
+        annot=True,
+        fmt="d"
+    )
+
+    plt.title(
+        f"Confusion Matrix - {name}"
+    )
+
+    plt.xlabel("Predicted Class")
+    plt.ylabel("Actual Class")
+
+    plt.tight_layout()
+    plt.show()
+
+
+# ============================================================
+# 27. ROC-AUC CURVES
+# ============================================================
+
+plt.figure(figsize=(10, 7))
+
+for name, model in models.items():
+
+    probabilities = model.predict_proba(
+        X_test
+    )[:, 1]
+
+    fpr, tpr, thresholds = roc_curve(
+        y_test,
+        probabilities
+    )
+
+    auc = roc_auc_score(
+        y_test,
+        probabilities
+    )
+
+    plt.plot(
+        fpr,
+        tpr,
+        linewidth=2,
+        label=f"{name} (AUC = {auc:.3f})"
+    )
+
+
+# Random classifier reference line
+plt.plot(
+    [0, 1],
+    [0, 1],
+    linestyle="--",
+    label="Random Classifier"
+)
+
+plt.xlabel("False Positive Rate")
+plt.ylabel("True Positive Rate")
+
+plt.title("ROC-AUC Curves - Model Comparison")
+
+plt.legend()
+plt.grid(True)
+
+plt.tight_layout()
+plt.show()
+
+
+# ============================================================
+# 28. SELECT CHAMPION MODEL
+# ============================================================
+# Champion is selected based on the BEST VALIDATION ROC-AUC
+# obtained during Stratified K-Fold Cross-Validation.
+
+search_results = {
+    "Logistic Regression": logistic_search,
+    "Random Forest": rf_search,
+    "XGBoost": xgb_search,
+    "SVM": svm_search
+}
+
+champion_name = max(
+    search_results,
+    key=lambda name: search_results[name].best_score_
+)
+
+champion_search = search_results[
+    champion_name
+]
+
+champion_model = champion_search.best_estimator_
+
+
+# ============================================================
+# 29. DISPLAY CHAMPION MODEL INFORMATION
+# ============================================================
+
+print("\n" + "=" * 70)
+print("CHAMPION MODEL")
+print("=" * 70)
+
+print(
+    "Champion Model:",
+    champion_name
+)
+
+print(
+    "Best Validation ROC-AUC:",
+    round(
+        champion_search.best_score_,
+        4
+    )
+)
+
+print("\nBest Hyperparameters:")
+
+for parameter, value in champion_search.best_params_.items():
+
+    print(
+        f"{parameter}: {value}"
+    )
+
+
+# ============================================================
+# 30. CHAMPION MODEL TEST EVALUATION
+# ============================================================
+
+champion_predictions = champion_model.predict(
+    X_test
+)
+
+champion_probabilities = champion_model.predict_proba(
+    X_test
+)[:, 1]
+
+champion_accuracy = accuracy_score(
+    y_test,
+    champion_predictions
+)
+
+champion_precision = precision_score(
+    y_test,
+    champion_predictions,
+    zero_division=0
+)
+
+champion_recall = recall_score(
+    y_test,
+    champion_predictions,
+    zero_division=0
+)
+
+champion_f1 = f1_score(
+    y_test,
+    champion_predictions,
+    zero_division=0
+)
+
+champion_auc = roc_auc_score(
+    y_test,
+    champion_probabilities
+)
+
+
+print("\n" + "=" * 70)
+print("CHAMPION MODEL TEST RESULTS")
+print("=" * 70)
+
+print(
+    "Accuracy :", round(champion_accuracy, 4)
+)
+
+print(
+    "Precision:", round(champion_precision, 4)
+)
+
+print(
+    "Recall   :", round(champion_recall, 4)
+)
+
+print(
+    "F1 Score :", round(champion_f1, 4)
+)
+
+print(
+    "ROC-AUC  :", round(champion_auc, 4)
+)
+
+
+# ============================================================
+# 31. CHAMPION CLASSIFICATION REPORT
+# ============================================================
+
+print("\n" + "=" * 70)
+print("CHAMPION CLASSIFICATION REPORT")
+print("=" * 70)
+
+print(
+    classification_report(
+        y_test,
+        champion_predictions,
+        zero_division=0
+    )
+)
+
+
+# ============================================================
+# 32. CHAMPION CONFUSION MATRIX
+# ============================================================
+
+champion_cm = confusion_matrix(
+    y_test,
+    champion_predictions
+)
+
+plt.figure(figsize=(6, 5))
+
+sns.heatmap(
+    champion_cm,
+    annot=True,
+    fmt="d"
+)
+
+plt.title(
+    f"Champion Model Confusion Matrix - {champion_name}"
+)
+
+plt.xlabel("Predicted Class")
+plt.ylabel("Actual Class")
+
+plt.tight_layout()
+plt.show()
+
+
+# ============================================================
+# 33. SAVE CHAMPION MODEL
+# ============================================================
+# The saved object contains:
+# - preprocessing
+# - imputation
+# - scaling
+# - one-hot encoding
+# - trained model
+#
+# Therefore raw input data can be passed directly to it later.
+
+model_filename = "champion_model.joblib"
+
+joblib.dump(
+    champion_model,
+    model_filename
+)
+
+print("\n" + "=" * 70)
+print("MODEL SERIALIZATION")
+print("=" * 70)
+
+print(
+    f"Champion model saved as: {model_filename}"
+)
+
+
+# ============================================================
+# 34. LOAD SERIALIZED MODEL
+# ============================================================
+
+loaded_model = joblib.load(
+    model_filename
+)
+
+print(
+    "Serialized model loaded successfully."
+)
+
+
+# ============================================================
+# 35. VERIFY LOADED MODEL
+# ============================================================
+
+loaded_predictions = loaded_model.predict(
+    X_test
+)
+
+loaded_probabilities = loaded_model.predict_proba(
+    X_test
+)[:, 1]
+
+loaded_auc = roc_auc_score(
+    y_test,
+    loaded_probabilities
+)
+
+print(
+    "\nROC-AUC of loaded model:",
+    round(loaded_auc, 4)
+)
+
+
+# ============================================================
+# 36. PREDICT NEW DATA
+# ============================================================
+# Example of a completely new passenger.
+# The pipeline automatically performs:
+#
+# Missing value handling
+# One-Hot Encoding
+# Scaling
+# Model prediction
+
+new_passenger = pd.DataFrame({
+    "Pclass": [3],
+    "Sex": ["female"],
+    "Age": [25],
+    "SibSp": [1],
+    "Parch": [0],
+    "Fare": [20.0],
+    "Embarked": ["S"]
+})
+
+
+# Prediction
+new_prediction = loaded_model.predict(
+    new_passenger
+)
+
+# Probability
+new_probability = loaded_model.predict_proba(
+    new_passenger
+)[0]
+
+
+print("\n" + "=" * 70)
+print("NEW DATA PREDICTION")
+print("=" * 70)
+
+print("\nNew Passenger:")
+
+display(new_passenger)
+
+print(
+    "Predicted Class:",
+    new_prediction[0]
+)
+
+print(
+    "Probability of Class 0:",
+    round(new_probability[0], 4)
+)
+
+print(
+    "Probability of Class 1:",
+    round(new_probability[1], 4)
+)
+
+
+# ============================================================
+# 37. FINAL SUMMARY
+# ============================================================
+
+print("\n" + "=" * 70)
+print("PROJECT SUMMARY")
+print("=" * 70)
+
+print("Dataset                 : Titanic")
+print("Problem Type            : Binary Classification")
+print("Models Trained          : 4")
+print("Models                  : Logistic Regression, Random Forest,")
+print("                          XGBoost, SVM")
+print("Cross Validation        : Stratified 5-Fold")
+print("Hyperparameter Tuning   : GridSearchCV")
+print("Primary CV Metric       : ROC-AUC")
+print("Evaluation Metrics      : Accuracy, Precision, Recall, F1, ROC-AUC")
+print("ROC Curves              : Generated")
+print("Confusion Matrices      : Generated")
+print("Champion Model          :", champion_name)
+print(
+    "Champion Validation AUC :",
+    round(champion_search.best_score_, 4)
+)
+print(
+    "Champion Test AUC       :",
+    round(champion_auc, 4)
+)
+print("Serialized Model        :", model_filename)
+
+print("\nPipeline completed successfully.")
